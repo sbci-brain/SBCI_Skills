@@ -25,13 +25,6 @@ instead of between atlas regions.
   one and in the background elsewhere.
 - Refuses to report success from an exit code: it checks the connectomes themselves.
 
-## Pipeline release
-
-`sbci-pipeline/SKILL.md`, "Where it runs", names the pipeline release and commit the skill
-was tested with (`20261123`, commit `85d1765`), and the image. A new pipeline release changes
-nothing here until it has been retested; then the release and commit change in `SKILL.md`,
-`references/running_one_subject_on_wanda.md` and `references/container_execution.md`
-together.
 
 ## Using it
 

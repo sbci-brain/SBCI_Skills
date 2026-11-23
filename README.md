@@ -2,7 +2,8 @@
 
 Agent skills for the [SBCI pipeline](https://github.com/sbci-brain/SBCI_Pipeline_Py3): the
 instructions an AI agent follows to run one subject from MRI to continuous structural and
-functional connectomes. They were written for Wanda (CyberBench-Neuro) and hold instructions
+functional connectomes. They were written for Wanda (CyberBench-Neuro), can be followed by any
+agent that runs shell commands on the machine that runs the jobs, and hold instructions
 only, no code.
 
 SBCI, Surface-Based Connectivity Integration (Cole et al., *Human Brain Mapping*, 2021),

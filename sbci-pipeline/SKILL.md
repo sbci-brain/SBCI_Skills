@@ -26,6 +26,18 @@ prerequisite.
    of the user's own first. A site lists such folders in `SBCI_READONLY_ROOTS`, and the job
    script refuses an input or output folder under them.
 
+## Outside Wanda
+
+The skill was written for Wanda (CyberBench-Neuro / CyberNeuro), and any agent that can run
+shell commands on the machine that runs the jobs can follow it. On another platform:
+
+- Everything needed is in "Choosing dataset settings", "Where it runs" and "Running a
+  subject". The parts about Wanda's screens, pipeline cards, Plan / Build modes and
+  cross-skill orchestration apply to Wanda only; skip them.
+- The job script calls the entry point once per stage, so one job runs every stage. "One
+  stage per invocation" describes the entry point, not what you start.
+- `~/.cyberbench/` is only where the pipeline is cloned; the folder needs nothing of Wanda.
+
 ## First response and dummy mode
 
 Use a short guided intake before displaying advanced parameters:
@@ -240,6 +252,21 @@ The data can live anywhere the user can read. ABCD or HCP
 data that still needs distortion correction is not supported: tell the user so and
 stop.
 
+Data from any other dataset has no profile. Do not run it with the nearest one: the
+preflight refuses a profile whose `FMRI_TR` or `INPUT_ROUTE` does not fit, and a profile
+that happens to pass is still another acquisition's recipe. Tell the user that the dataset
+is not supported as shipped, and that the way in is a profile of their own
+([references/running_one_subject_on_wanda.md](references/running_one_subject_on_wanda.md),
+"Adapting to another dataset"), whose results are unvalidated. Writing that profile is the
+user's decision and needs their acquisition's facts; do not start it unasked.
+
+The `raw` route corrects DWI with Synb0-DISCO only. A reverse phase-encoded b0 or a
+fieldmap acquired for the DWI is not used by it; say so when the subject has one, since
+the user may prefer to correct the DWI with it upstream and enter as corrected data.
+
+Each shipped profile has been run end to end on one subject on this release. Say that at
+intake, not only when asked.
+
 Whether the data are already corrected is a fact to establish, not to infer from the
 dataset's name. The images and sidecars can't show it, and nothing stops uncorrected data
 declared as corrected: the run finishes normally with wrong results. Assume correction only
@@ -313,11 +340,62 @@ is pulled into Docker.
 | Machine | What it needs |
 |---|---|
 | Longleaf | `module load apptainer matlab` in the shell that runs the preflight and `submit.sh`; nothing to install |
+| Another Slurm cluster | Apptainer and MATLAB in the shell that runs the preflight and `submit.sh`, under that site's module names (`module avail`). Ask the user for the account and partition if the site requires them, and pass them to `submit.sh` before the job script (`--account=... --partition=...`): it hands every option to Slurm. The job asks for 16 CPUs, 64 GB and 48 h |
 | Linux server or desktop; Windows (WSL 2) | Apptainer or Docker (Apptainer is used where it is on PATH; `SBCI_CONTAINER=docker` chooses Docker), a Linux MATLAB on PATH for FSFast, and 16 cores and 64 GB |
 | macOS | no subject can finish: FSFast needs a Linux MATLAB inside the container. Run it on Longleaf or a Linux machine |
 
-On Windows the commands must run in WSL: if they run in Windows itself, ask the user to turn
-on WSL integration in CyberNeuro Desktop's settings.
+A whole subject has been run with Apptainer under Slurm only. With Docker, fetching the
+image, the self-test and the preflight have been run, and no whole subject: say so before a
+Docker run starts.
+
+On Windows the commands must run in WSL, not in Windows itself: from a Windows shell, through
+`wsl.exe`; on Wanda, ask the user to turn on WSL integration in CyberNeuro Desktop's settings.
+Docker there is Docker Desktop with WSL integration on for that distribution (`docker info`
+answers inside WSL).
+
+### MATLAB
+
+MATLAB is the one program taken from the machine, and the usual reason no subject finishes.
+
+- It must be a Linux MATLAB whose `matlab` is on PATH in the shell that starts the job. Its
+  install folder is bound into the container at the same path. A MATLAB installed in Windows
+  does not serve WSL.
+- Its licence has to be visible from inside the container. `MLM_LICENSE_FILE` and
+  `LM_LICENSE_FILE` are passed in, so a network licence (`port@server`) works that way. A
+  licence file is seen only if it is inside the MATLAB install folder: other folders of the
+  machine are not bound. Under Docker the job runs as the user's numeric id with `/tmp` as
+  home, so an activation kept in the user's home folder is not seen.
+- Validated: R2018b on Longleaf. Other releases and other licence types are untested; say so.
+- Before a long job, check that MATLAB starts at all in that shell (`matlab -batch "disp(version)"`;
+  before R2019a, `matlab -nodisplay -r "disp(version); exit"`). This does not prove it starts
+  inside the container. The preflight only looks for the command, so a licence that fails in
+  the container shows up at `fsfast`, the seventh stage, hours in. Nothing is lost: fix the
+  licence and start the job again on the same output folder, and it resumes at `fsfast`.
+
+### Memory and cores
+
+16 cores and 64 GB is what the validation runs had. Less is untested: there is no known
+minimum.
+
+- With Slurm the job requests them. Without, nothing reserves or limits anything: FreeSurfer,
+  the fODF fit and eddy use every core the job can see.
+- Check what the job will get in the shell that starts it (`nproc`, `free -g`). Under WSL and
+  Docker Desktop that is the virtual machine's share, not the computer's: `.wslconfig`, or
+  Docker Desktop's resource settings.
+- If the machine has less, tell the user both numbers, that the run is untested there, takes
+  longer and may be stopped for memory, and let them choose between it and a larger machine.
+  Do not change their machine's settings yourself.
+
+### Folders
+
+- No spaces in the path of the pipeline, the input folder, the output folder or any file
+  `sbci_local.json` names: the job script splits the list of folders it binds on spaces.
+- Under WSL, keep the pipeline, input and output in the Linux filesystem (the home folder).
+  A Windows drive under `/mnt/` is slow, and a whole run there is untested; the preflight
+  alone has been run with the subject on one.
+- Without Slurm the job is a background process of that machine. It ends if the machine
+  sleeps or restarts or WSL is shut down; start it again on the same output folder to resume.
+  Tell the user to keep the machine awake.
 
 On any machine:
 - The preflight says which of these is missing; tell the user in plain words. FSFast is a
@@ -385,6 +463,17 @@ On any machine:
    (`smoothed_sc_avg_0.005_ico4.mat`, `sub_sc_avg_0.005_ico4.mat`, `fc_avg_ico4.mat`). The
    settings used, the profile and the pipeline and image versions are saved in
    `<OUTPUT_DIR>/config/`.
+6. Check them before reporting success; the log's `rc=0` is not enough.
+   - `<OUTPUT_DIR>/sbci_output/local_adapter_manifest.json` must have
+     `status: completed_official_runtime`, `scientificAlgorithmRan: true` and
+     `validation.ready: true`.
+   - All three `.mat` files exist and are not empty. If you open them (with the image's
+     Python, which has what reads them; the machine's may not), read by variable name, never
+     by position: `sc` and `fc` are 5,124 by 5,124, `sub_sub_sc` 19 by 19, `sub_surf_sc` 19
+     by 5,124, all finite, none all zero.
+   - Report what you checked and what you did not. For a shipped dataset,
+     [references/running_one_subject_on_wanda.md](references/running_one_subject_on_wanda.md)
+     section 6 compares the run with the dataset's validation record.
 
 `workflow.stages` runs part of this workflow with the same script: `preprocess` stops before
 the SBCI stage, `tractography` runs tractography and SC, `fc` runs FC (default `all`).

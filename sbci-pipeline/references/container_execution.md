@@ -64,7 +64,8 @@ paths: the pipeline, the input folder and its subject, the output folder, every 
 else of the machine is visible to the stages. With Docker the job runs as the user who
 started it, so the outputs are that user's.
 
-The Docker route has been run for fetching the image and for the preflight; a whole subject
+The Docker route has been run for fetching the image, the self-test and the preflight (Docker
+Desktop under WSL 2, 2026-11-23); a whole subject
 has so far been run with Apptainer only. Say so when the user's machine has only Docker.
 
 ## Checks before any subject data
@@ -85,7 +86,17 @@ apptainer exec --bind <pipeline>,<input>,<output> <pipeline>/sbci-full.sif \
 ```
 
 With Docker, the same `bash -c` command after
-`docker run --rm -v <pipeline>:<pipeline> -v <input>:<input> -v <output>:<output> <image>`.
+
+```text
+docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v <pipeline>:<pipeline> -v <input>:<input> -v <output>:<output> <image>
+```
+
+where `<image>` is the repository and digest in `<pipeline>/workflow/image_pin.sh`
+(`sdszhauk/sbci-image@sha256:...`). Keep `--user`: without it the container runs as root and
+leaves root-owned results, and root-owned `__pycache__` folders inside the pipeline's folder,
+which the user then cannot remove. The job scripts already run this way.
+
 Require in `<output>/local_adapter_manifest.json`: `status: completed_local_runtime_self_test`,
 `runtime.ready: true`, `selfTest.ready: true`, `selfTest.patientDataUsed: false`,
 `scientificAlgorithmRan: false` and `officialScientificPipelineRan: false`.

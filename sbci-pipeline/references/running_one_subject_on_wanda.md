@@ -14,7 +14,7 @@ exercised on real data; other parts have not, and the difference matters.
 |---|---|
 | Full preprocessing + SBCI, one Slurm job, inside the `sbci-full` image with Apptainer | **Verified** on one subject each of ADNI (raw), ABCD, HCP Aging and HCP Young Adult. The numbers are in the pipeline, `datasets/<name>/validation.md` |
 | The same input twice on the same image | Surfaces, SC and FC identical on the datasets corrected upstream. Raw ADNI differs slightly from run to run (Synb0-DISCO and eddy); `datasets/adni/validation.md` gives the size |
-| The Docker route | Fetching the image and the preflight only. No whole subject yet |
+| The Docker route | Fetching the image, the self-test and the preflight only (Docker Desktop under WSL 2). No whole subject yet |
 | Inspection / pre-flight through the Wanda GUI in Plan mode | Verified on the earlier layout (2026-09/10); not repeated on this release |
 | **Executing** stages from the Wanda GUI (Build mode) | **Not verified.** Every real run so far was submitted with the job script. Use the GUI to inspect and plan; submit the work through `submit.sh` |
 | Functional connectivity and cortical structural connectivity | Verified against the historical Python 2 pipeline on an earlier version (FC r = 1.000000 reusing py2's fMRI stage; cortical SC total mass ratio 1.0018 on an independent re-derivation) |
@@ -36,8 +36,17 @@ On the machine that runs the job (these instructions use UNC Longleaf as the exa
 - **MATLAB**, a Linux install on `PATH` (R2018b validated). FSFast's `selxavg3-sess` needs
   it, and the job binds it into the image. FreeSurfer 6's bundled `MCRv80` does not replace
   it. Without MATLAB no subject finishes, SC included: it is the single most common blocker.
+  Its licence must work inside the container: a network licence named in `MLM_LICENSE_FILE`
+  or `LM_LICENSE_FILE`, or a licence file inside the MATLAB install folder. Other releases
+  and licence types are untested (the skill's "MATLAB" section).
 - **A FreeSurfer `license.txt`** of your own.
-- **16 cores, 64 GB of memory and about 30 GB of disk per subject.**
+- **16 cores, 64 GB of memory and about 30 GB of disk per subject.** These are what the
+  validation runs had; a smaller machine is untested and there is no known minimum.
+- **Paths without spaces**, and under WSL, folders in the Linux filesystem rather than on a
+  Windows drive under `/mnt/`.
+
+On another Slurm cluster, load that site's Apptainer and MATLAB modules, and give `submit.sh`
+the account and partition the site requires, before the job script's name.
 
 On Longleaf, before the preflight and before submitting:
 
@@ -237,6 +246,9 @@ the pipeline folder.
 | `fodf_tissue ended in state blocked: SH order L needs at least … unique gradient directions` | `SH_ORDER` too high for the acquisition | Lower `SH_ORDER` (or `parameters.sh_order`) to the order the message names |
 | `fsfast ended in state blocked: … RepetitionTime is X s, but … declares FMRI_TR=…` | The profile's fMRI timing is for another protocol | Use the profile for this acquisition (see §8) |
 | `fsfast ended in state blocked: fsfast needs the distortion-corrected BOLD` | `fmri_correction` has not produced `fmri/bold_distcorr.nii.gz` | Run the correction stage first; uncorrected BOLD is never used |
+| `fsfast` fails with a MATLAB licence error although the preflight passed | The preflight only looks for the `matlab` command; the licence is not visible inside the container | Make the licence reachable (see §1), then submit again on the same output folder: the run resumes at `fsfast` |
+| Results, or `__pycache__` folders in the pipeline's folder, belong to root | A `docker run` typed by hand without `--user` | Run it with `--user "$(id -u):$(id -g)" -e HOME=/tmp`, as `container_execution.md` shows |
+| The job vanished with no `finished=` line in its log (no Slurm) | The machine slept or restarted, WSL was shut down, or the job was stopped for memory | Submit again on the same output folder; it resumes after the last completed stage |
 | `STOPPED: preprocessing call N failed` | A stage failed | The line above names the issue; `output/logs/call_N.err` has the stage's own output. Fix the cause and submit again |
 
 ---
